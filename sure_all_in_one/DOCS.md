@@ -33,7 +33,36 @@ direct HTTPS address on port 1234 remains available.
 The `ssl` option defaults to `true`. `certfile` and `keyfile` are filenames
 inside Home Assistant's `/ssl` directory. Disabling `ssl` is intended only for
 local troubleshooting; bank authorization providers generally require a
-stable, publicly reachable HTTPS callback URL with a trusted certificate.
+stable HTTPS callback URL with a publicly trusted certificate.
+
+### Enable Banking callback without a public port
+
+Set `enable_banking_callback_url` when Sure is accessed through Home Assistant
+ingress or when the hostname visible to Sure is not the hostname registered
+with Enable Banking. Leave it blank to retain Sure's normal request-derived
+callback. A configured value must be the complete HTTPS URL, for example:
+
+```text
+https://sure.example.com/enable_banking_items/callback
+```
+
+For a LAN/VPN-only callback without router port forwarding:
+
+1. Use a real domain that you control.
+2. Obtain a publicly trusted certificate with DNS validation and place its
+   certificate/key in Home Assistant's `/ssl` directory.
+3. Configure local or VPN DNS so the hostname resolves to the Home Assistant
+   LAN address only for your devices.
+4. Serve that hostname locally over HTTPS. Using local port 443 through a
+   reverse proxy avoids a nonstandard port; otherwise include the mapped port
+   in the callback URL.
+5. Enter the exact URL above in both this app setting and the Enable Banking
+   application settings.
+6. Complete authorization in the same browser while connected to that LAN/VPN.
+
+This setting changes only the URL Sure displays and submits to Enable Banking.
+It does not create DNS records, obtain a certificate, configure a reverse
+proxy, or expose a port. Some banks may impose additional requirements.
 
 ## First login and safety
 

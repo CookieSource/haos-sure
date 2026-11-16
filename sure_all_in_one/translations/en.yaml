@@ -1,0 +1,18 @@
+configuration:
+  onboarding_state:
+    name: Registration
+    description: Allow new accounts, close registration, or require invitations.
+  ssl:
+    name: HTTPS
+    description: Enable direct HTTPS access. Keep this enabled for bank connections.
+  certfile:
+    name: Certificate file
+    description: Certificate filename inside Home Assistant's /ssl directory.
+  keyfile:
+    name: Private key file
+    description: Private-key filename inside Home Assistant's /ssl directory.
+  enable_banking_callback_url:
+    name: Enable Banking callback URL
+    description: Optional exact private-access callback using a trusted HTTPS hostname, ending in /enable_banking_items/callback.
+network:
+  3443/tcp: Sure Finance HTTPS web interface on your LAN

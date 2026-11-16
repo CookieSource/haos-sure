@@ -16,7 +16,9 @@ assert cfg['ports'] == {'3443/tcp': 1234}, 'Only the HTTPS frontend should be ex
 assert cfg['ingress'] is True
 assert cfg['ingress_port'] == 8099
 assert cfg['panel_title'] == 'Sure'
+assert cfg['version'] == '0.2.1'
 assert cfg['options']['ssl'] is True
+assert cfg['options']['enable_banking_callback_url'] == ''
 assert any(item.get('type') == 'ssl' for item in cfg['map'])
 
 def png_size(path):
@@ -48,6 +50,9 @@ assert 'unset MCP_API_TOKEN' in init
 assert 'auth-host=scram-sha-256' in init
 assert 'auth-local=peer' in init
 assert 'POSTGRES_PASSWORD' in init
+assert 'ENABLE_BANKING_CALLBACK_URL' in init
+assert 'URI::HTTPS' in init
+assert 'uri.path == "/enable_banking_items/callback"' in init
 for encryption_key in [
     'ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY',
     'ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY',
@@ -61,6 +66,10 @@ for service in ['sure-postgres', 'sure-redis', 'sure-db-init', 'sure-web', 'sure
     assert f'[program:{service}]' in supervisor
 assert 'listen_addresses=127.0.0.1' in supervisor
 assert '--bind 127.0.0.1' in supervisor
+
+callback_override = (APP / 'initializers' / 'haos_enable_banking_callback.rb').read_text()
+assert 'ENV["ENABLE_BANKING_CALLBACK_URL"]' in callback_override
+assert 'ApplicationHelper.prepend' in callback_override
 
 print('PASS: HAOS metadata, config, service isolation, scripts and image definition')
 print('NOTE: this script performs static checks only; run container and HAOS tests separately')

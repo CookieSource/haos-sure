@@ -23,6 +23,7 @@ COPY scripts/ /usr/local/bin/
 COPY supervisor/sure.conf /etc/supervisor/conf.d/sure.conf
 COPY ingress/nginx.conf /etc/nginx/nginx.conf
 COPY ingress/direct-http.conf ingress/direct-tls.conf /etc/nginx/
+COPY initializers/haos_enable_banking_callback.rb /rails/config/initializers/
 RUN chmod 0755 /usr/local/bin/sure-ha-init /usr/local/bin/sure-db-init \
     /usr/local/bin/sure-web /usr/local/bin/sure-worker \
     /usr/local/bin/sure-backup-loop /usr/local/bin/sure-backup-now

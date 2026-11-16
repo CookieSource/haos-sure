@@ -27,6 +27,11 @@ Add `https://github.com/CookieSource/haos-sure` in Home Assistant under
 Settings > Apps > App Store > Repositories. Home Assistant will build the image
 when you install this single app.
 
+The app settings include an optional exact Enable Banking callback URL. This
+supports a trusted domain resolved through local DNS or a VPN, so the callback
+can work without forwarding a Home Assistant port from the public internet.
+Certificate issuance and local DNS/reverse-proxy setup remain separate.
+
 ## Status
 
 The container image has been built and smoke-tested on amd64 with the current

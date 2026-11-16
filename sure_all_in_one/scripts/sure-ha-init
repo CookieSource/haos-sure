@@ -59,6 +59,24 @@ case "$ONBOARDING_STATE" in
 esac
 export ONBOARDING_STATE
 
+# Optional exact Enable Banking callback. This lets a trusted public hostname
+# resolve only on the user's LAN/VPN while avoiding an internet-facing port.
+ENABLE_BANKING_CALLBACK_URL="$(jq -r '.enable_banking_callback_url // ""' /data/options.json 2>/dev/null || printf '')"
+if [[ -n "$ENABLE_BANKING_CALLBACK_URL" ]]; then
+  if ! ruby -ruri -e '
+    value = ARGV.fetch(0)
+    uri = URI.parse(value)
+    valid = uri.is_a?(URI::HTTPS) && uri.host && !uri.userinfo &&
+      !uri.query && !uri.fragment &&
+      uri.path == "/enable_banking_items/callback"
+    exit(valid ? 0 : 1)
+  ' "$ENABLE_BANKING_CALLBACK_URL"; then
+    echo '[sure] enable_banking_callback_url must be an HTTPS URL ending exactly in /enable_banking_items/callback, without credentials, query, or fragment' >&2
+    exit 1
+  fi
+fi
+export ENABLE_BANKING_CALLBACK_URL
+
 # Direct web access is HTTPS by default. Home Assistant mounts its certificate
 # directory read-only at /ssl. nginx reads stable symlinks so the configured
 # certificate filenames can be changed without templating its configuration.
