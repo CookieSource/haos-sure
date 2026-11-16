@@ -1,0 +1,33 @@
+name: Sure Finance (All-in-One)
+version: "0.2.0"
+slug: sure_all_in_one
+description: Sure, PostgreSQL, Redis, and its background worker in one Home Assistant OS app.
+url: https://github.com/CookieSource/haos-sure/tree/main/sure_all_in_one
+arch:
+  - amd64
+startup: application
+boot: auto
+init: false
+ports:
+  3443/tcp: 1234
+ports_description:
+  3443/tcp: Sure Finance HTTPS web interface (LAN)
+webui: "[PROTO:ssl]://[HOST]:[PORT:3443]"
+ingress: true
+ingress_port: 8099
+ingress_stream: true
+panel_icon: mdi:finance
+panel_title: Sure
+options:
+  onboarding_state: open
+  ssl: true
+  certfile: fullchain.pem
+  keyfile: privkey.pem
+schema:
+  onboarding_state: list(open|closed|invite_only)
+  ssl: bool
+  certfile: str
+  keyfile: str
+map:
+  - type: ssl
+    read_only: true

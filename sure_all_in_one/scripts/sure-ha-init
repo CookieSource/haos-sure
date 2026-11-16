@@ -1,0 +1,110 @@
+#!/bin/bash
+set -euo pipefail
+umask 077
+
+# Home Assistant preserves /data when an app restarts or is upgraded.
+install -d -m 0700 /data/private /data/backups
+install -d -o postgres -g postgres -m 0700 /data/postgres
+install -d -o redis -g redis -m 0700 /data/redis
+install -d -o rails -g rails -m 0700 /data/storage
+install -d -o postgres -g postgres -m 0775 /run/postgresql
+install -d -m 0755 /run/sure
+rm -f /run/sure/db-ready /run/sure/migrations-ready
+
+# Create application and database secrets on first install. NEVER rotate them
+# during a reboot or upgrade: Sure uses SECRET_KEY_BASE to encrypt data.
+if [[ ! -f /data/private/sure-secrets.env ]]; then
+  secret="$(openssl rand -hex 64)"
+  password="$(openssl rand -hex 32)"
+  printf 'SECRET_KEY_BASE=%s\nPOSTGRES_PASSWORD=%s\n' "$secret" "$password" > /data/private/sure-secrets.env
+  chmod 0600 /data/private/sure-secrets.env
+  echo '[sure] Initial credentials generated and stored under /data/private'
+fi
+# shellcheck source=/dev/null
+source /data/private/sure-secrets.env
+
+# Current Sure releases require all three Active Record encryption keys to
+# protect bank/provider credentials, MFA secrets, email addresses and names at
+# rest. Generate missing keys once, including when upgrading an installation
+# whose secrets file predates these settings.
+generated_encryption_keys=false
+if [[ -z "${ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY:-}" ]]; then
+  ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY="$(openssl rand -hex 32)"
+  printf 'ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY=%s\n' "$ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY" >> /data/private/sure-secrets.env
+  generated_encryption_keys=true
+fi
+if [[ -z "${ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY:-}" ]]; then
+  ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY="$(openssl rand -hex 32)"
+  printf 'ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=%s\n' "$ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY" >> /data/private/sure-secrets.env
+  generated_encryption_keys=true
+fi
+if [[ -z "${ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT:-}" ]]; then
+  ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT="$(openssl rand -hex 32)"
+  printf 'ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT=%s\n' "$ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT" >> /data/private/sure-secrets.env
+  generated_encryption_keys=true
+fi
+if [[ "$generated_encryption_keys" == true ]]; then
+  echo '[sure] Active Record encryption keys generated and stored under /data/private'
+fi
+export SECRET_KEY_BASE POSTGRES_PASSWORD
+export ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY
+export ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY
+export ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT
+
+# HA options: user can close onboarding after creating their first account.
+ONBOARDING_STATE="$(jq -r '.onboarding_state // "open"' /data/options.json 2>/dev/null || printf 'open')"
+case "$ONBOARDING_STATE" in
+  open|closed|invite_only) ;;
+  *) echo '[sure] Unsupported onboarding_state' >&2; exit 1 ;;
+esac
+export ONBOARDING_STATE
+
+# Direct web access is HTTPS by default. Home Assistant mounts its certificate
+# directory read-only at /ssl. nginx reads stable symlinks so the configured
+# certificate filenames can be changed without templating its configuration.
+SSL_ENABLED="$(jq -r '.ssl // true' /data/options.json 2>/dev/null || printf 'true')"
+CERTFILE="$(jq -r '.certfile // "fullchain.pem"' /data/options.json 2>/dev/null || printf 'fullchain.pem')"
+KEYFILE="$(jq -r '.keyfile // "privkey.pem"' /data/options.json 2>/dev/null || printf 'privkey.pem')"
+case "$SSL_ENABLED" in
+  true|false) ;;
+  *) echo '[sure] ssl must be true or false' >&2; exit 1 ;;
+esac
+for filename in "$CERTFILE" "$KEYFILE"; do
+  if [[ -z "$filename" || "$filename" == */* || "$filename" == .* ]]; then
+    echo '[sure] certfile and keyfile must be plain filenames under /ssl' >&2
+    exit 1
+  fi
+done
+if [[ "$SSL_ENABLED" == true ]]; then
+  if [[ ! -r "/ssl/$CERTFILE" || ! -r "/ssl/$KEYFILE" ]]; then
+    echo "[sure] HTTPS requires readable /ssl/$CERTFILE and /ssl/$KEYFILE" >&2
+    exit 1
+  fi
+  ln -sf "/ssl/$CERTFILE" /run/sure/tls.crt
+  ln -sf "/ssl/$KEYFILE" /run/sure/tls.key
+  cp /etc/nginx/direct-tls.conf /run/sure/direct.conf
+  export RAILS_ASSUME_SSL=true
+else
+  cp /etc/nginx/direct-http.conf /run/sure/direct.conf
+  export RAILS_ASSUME_SSL=false
+  echo '[sure] WARNING: direct web access is using HTTP because ssl is disabled' >&2
+fi
+
+# Explicitly do not configure any external AI provider credentials.
+unset OPENAI_ACCESS_TOKEN OPENAI_API_KEY ANTHROPIC_API_KEY ANTHROPIC_API_TOKEN
+unset GEMINI_API_KEY GOOGLE_GENERATIVE_AI_API_KEY
+unset MCP_API_TOKEN MCP_USER_EMAIL EXTERNAL_ASSISTANT_URL EXTERNAL_ASSISTANT_TOKEN
+unset POSTHOG_KEY
+
+if [[ ! -s /data/postgres/PG_VERSION ]]; then
+  echo '[sure] Initializing private PostgreSQL 16 data directory'
+  gosu postgres /usr/lib/postgresql/16/bin/initdb -D /data/postgres \
+    --encoding=UTF8 --locale=C.UTF-8 --auth-local=peer --auth-host=scram-sha-256
+fi
+pg_version="$(cat /data/postgres/PG_VERSION)"
+if [[ "$pg_version" != '16' ]]; then
+  echo "[sure] PostgreSQL data version $pg_version is not 16. Refusing unsafe upgrade." >&2
+  exit 1
+fi
+
+exec /usr/bin/supervisord --nodaemon --configuration /etc/supervisor/supervisord.conf

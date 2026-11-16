@@ -1,0 +1,28 @@
+#!/bin/bash
+set -euo pipefail
+
+for i in $(seq 1 120); do
+  if gosu postgres pg_isready -h /run/postgresql -U postgres -q; then
+    break
+  fi
+  sleep 1
+done
+if ! gosu postgres pg_isready -h /run/postgresql -U postgres -q; then
+  echo '[sure] PostgreSQL did not start' >&2
+  exit 1
+fi
+
+# Password is randomly generated hex, hence safe as a quoted SQL string.
+if [[ "$(gosu postgres psql -h /run/postgresql -U postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='sure_user'")" != '1' ]]; then
+  gosu postgres psql -h /run/postgresql -U postgres -v ON_ERROR_STOP=1 \
+    -c "CREATE ROLE sure_user WITH LOGIN PASSWORD '$POSTGRES_PASSWORD'"
+else
+  gosu postgres psql -h /run/postgresql -U postgres -v ON_ERROR_STOP=1 \
+    -c "ALTER ROLE sure_user WITH LOGIN PASSWORD '$POSTGRES_PASSWORD'"
+fi
+if [[ "$(gosu postgres psql -h /run/postgresql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='sure_production'")" != '1' ]]; then
+  gosu postgres createdb -h /run/postgresql -U postgres -O sure_user sure_production
+fi
+
+touch /run/sure/db-ready
+echo '[sure] Database available'

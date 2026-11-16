@@ -1,0 +1,14 @@
+#!/bin/bash
+set -euo pipefail
+for i in $(seq 1 240); do
+  [[ -f /run/sure/db-ready ]] && break
+  sleep 1
+done
+[[ -f /run/sure/db-ready ]] || { echo '[sure] Database preparation timed out' >&2; exit 1; }
+
+cd /rails
+# The Rails app's official entrypoint runs db:prepare before serving; make it
+# explicit so the background worker waits for migrations to finish.
+gosu rails ./bin/rails db:prepare
+touch /run/sure/migrations-ready
+exec gosu rails ./bin/rails server -b 0.0.0.0 -p 3000

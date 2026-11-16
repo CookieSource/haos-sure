@@ -1,0 +1,9 @@
+#!/bin/bash
+set -euo pipefail
+# A dump is taken after initial startup and daily afterward. HAOS backups
+# include /data, holding these dumps, credentials and uploaded files.
+sleep 600
+while :; do
+  /usr/local/bin/sure-backup-now || echo '[sure] Database dump failed' >&2
+  sleep 86400
+done

@@ -1,0 +1,9 @@
+#!/bin/bash
+set -euo pipefail
+for i in $(seq 1 300); do
+  [[ -f /run/sure/migrations-ready ]] && break
+  sleep 1
+done
+[[ -f /run/sure/migrations-ready ]] || { echo '[sure] Migrations not ready' >&2; exit 1; }
+cd /rails
+exec gosu rails bundle exec sidekiq
